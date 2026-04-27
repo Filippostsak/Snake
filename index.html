@@ -1,1 +1,450 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SNAKE</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323:wght@400&display=swap');
 
+  :root {
+    --phosphor: #00ff41;
+    --phosphor-dim: #00aa2a;
+    --phosphor-faint: #003010;
+    --phosphor-glow: rgba(0,255,65,0.15);
+    --bg: #020b04;
+    --scanline: rgba(0,0,0,0.25);
+    --grid-size: 20;
+    --cell: 24px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'VT323', monospace;
+    overflow: hidden;
+    cursor: none;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      var(--scanline) 2px,
+      var(--scanline) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.5) 100%);
+    pointer-events: none;
+    z-index: 99;
+  }
+
+  .terminal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 32px;
+    border: 2px solid var(--phosphor-dim);
+    box-shadow:
+      0 0 20px var(--phosphor-glow),
+      0 0 60px rgba(0,255,65,0.05),
+      inset 0 0 30px rgba(0,255,65,0.03);
+    position: relative;
+    background: rgba(0,8,2,0.95);
+  }
+
+  .terminal::before {
+    content: '▶ SNAKE v1.0 ◀';
+    position: absolute;
+    top: -14px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    color: var(--phosphor);
+    font-size: 18px;
+    padding: 0 12px;
+    letter-spacing: 3px;
+    text-shadow: 0 0 8px var(--phosphor);
+    white-space: nowrap;
+  }
+
+  .hud {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    color: var(--phosphor);
+    font-size: 22px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px var(--phosphor);
+  }
+
+  .hud span { opacity: 0.7; font-size: 16px; }
+
+  #canvas {
+    display: block;
+    image-rendering: pixelated;
+    border: 1px solid var(--phosphor-faint);
+    box-shadow: 0 0 15px rgba(0,255,65,0.1);
+  }
+
+  .controls {
+    color: var(--phosphor-dim);
+    font-size: 16px;
+    letter-spacing: 1px;
+    text-align: center;
+    line-height: 1.8;
+    text-shadow: 0 0 5px rgba(0,255,65,0.3);
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    background: rgba(0,8,2,0.92);
+    z-index: 10;
+  }
+
+  .overlay h1 {
+    font-size: 72px;
+    color: var(--phosphor);
+    text-shadow: 0 0 20px var(--phosphor), 0 0 40px rgba(0,255,65,0.4);
+    letter-spacing: 8px;
+    animation: flicker 3s infinite;
+  }
+
+  .overlay .sub {
+    font-size: 24px;
+    color: var(--phosphor-dim);
+    letter-spacing: 4px;
+    text-shadow: 0 0 8px var(--phosphor-dim);
+  }
+
+  .overlay .score-display {
+    font-size: 32px;
+    color: var(--phosphor);
+    letter-spacing: 3px;
+    text-shadow: 0 0 10px var(--phosphor);
+  }
+
+  .blink {
+    animation: blink 1s step-end infinite;
+    font-size: 20px;
+    color: var(--phosphor);
+    letter-spacing: 3px;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  @keyframes flicker {
+    0%, 96%, 100% { opacity: 1; }
+    97% { opacity: 0.6; }
+    98% { opacity: 1; }
+    99% { opacity: 0.7; }
+  }
+
+  /* Touch controls */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 48px);
+    grid-template-rows: repeat(3, 48px);
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .dpad button {
+    background: transparent;
+    border: 1px solid var(--phosphor-dim);
+    color: var(--phosphor);
+    font-size: 22px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.1s;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .dpad button:active {
+    background: var(--phosphor-faint);
+    box-shadow: 0 0 8px var(--phosphor-glow);
+  }
+
+  .dpad .empty { border: none; }
+</style>
+</head>
+<body>
+
+<div class="terminal">
+  <div class="hud">
+    <div><span>SCORE </span><span id="score">0</span></div>
+    <div><span>HIGH  </span><span id="hi">0</span></div>
+    <div><span>LEVEL </span><span id="level">1</span></div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <div class="controls" id="ctrl-hint">
+    WASD / ΒΕΛΗ · ENTER ΕΚΚΙΝΗΣΗ
+  </div>
+
+  <div class="dpad" id="dpad">
+    <button class="empty"></button>
+    <button id="btn-up">▲</button>
+    <button class="empty"></button>
+    <button id="btn-left">◄</button>
+    <button class="empty"></button>
+    <button id="btn-right">►</button>
+    <button class="empty"></button>
+    <button id="btn-down">▼</button>
+    <button class="empty"></button>
+  </div>
+
+  <div class="overlay" id="overlay">
+    <h1>SNAKE</h1>
+    <div class="sub">ΚΛΑΣΙΚΟ ΠΑΙΧΝΙΔΙ</div>
+    <div class="score-display" id="overlay-score"></div>
+    <div class="blink" id="start-msg">[ ENTER / TAP ΓΙΑ ΕΚΚΙΝΗΣΗ ]</div>
+  </div>
+</div>
+
+<script>
+const GRID = 20;
+const CELL = 24;
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = canvas.height = GRID * CELL;
+
+const scoreEl = document.getElementById('score');
+const hiEl = document.getElementById('hi');
+const levelEl = document.getElementById('level');
+const overlay = document.getElementById('overlay');
+const overlayScore = document.getElementById('overlay-score');
+const startMsg = document.getElementById('start-msg');
+
+const PHOSPHOR = '#00ff41';
+const PHOSPHOR_DIM = '#00aa2a';
+const PHOSPHOR_FAINT = '#003010';
+const BG = '#020b04';
+
+let snake, dir, nextDir, food, score, hiScore = 0, level, gameLoop, running = false;
+let foodAnim = 0;
+
+function init() {
+  snake = [
+    {x: 10, y: 10},
+    {x: 9,  y: 10},
+    {x: 8,  y: 10},
+  ];
+  dir = {x: 1, y: 0};
+  nextDir = {x: 1, y: 0};
+  score = 0;
+  level = 1;
+  scoreEl.textContent = 0;
+  levelEl.textContent = 1;
+  spawnFood();
+}
+
+function spawnFood() {
+  let pos;
+  do {
+    pos = {x: Math.floor(Math.random()*GRID), y: Math.floor(Math.random()*GRID)};
+  } while (snake.some(s => s.x===pos.x && s.y===pos.y));
+  food = pos;
+}
+
+function getSpeed() {
+  return Math.max(60, 180 - (level-1) * 20);
+}
+
+function start() {
+  init();
+  overlay.style.display = 'none';
+  running = true;
+  clearInterval(gameLoop);
+  gameLoop = setInterval(tick, getSpeed());
+  draw();
+}
+
+function tick() {
+  dir = {...nextDir};
+  const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+
+  // Wall collision
+  if (head.x < 0 || head.x >= GRID || head.y < 0 || head.y >= GRID) {
+    gameOver(); return;
+  }
+  // Self collision
+  if (snake.some(s => s.x===head.x && s.y===head.y)) {
+    gameOver(); return;
+  }
+
+  snake.unshift(head);
+
+  if (head.x === food.x && head.y === food.y) {
+    score += 10 * level;
+    scoreEl.textContent = score;
+    if (score > hiScore) { hiScore = score; hiEl.textContent = hiScore; }
+    if (score % 50 === 0) {
+      level = Math.min(10, level + 1);
+      levelEl.textContent = level;
+      clearInterval(gameLoop);
+      gameLoop = setInterval(tick, getSpeed());
+    }
+    spawnFood();
+  } else {
+    snake.pop();
+  }
+
+  draw();
+}
+
+function gameOver() {
+  clearInterval(gameLoop);
+  running = false;
+  overlayScore.textContent = `ΣΚΟΡ: ${score}`;
+  startMsg.textContent = '[ ENTER / TAP ΓΙΑ ΕΠΑΝΑΛΗΨΗ ]';
+  overlay.querySelector('h1').textContent = 'GAME OVER';
+  overlay.querySelector('.sub').textContent = score > hiScore - 10 && score > 0 ? '★ ΝΕΟΣ ΚΑΛΥΤΕΡΟΣ ★' : 'ΔΩΣ ΤΟ ΚΑΛΥΤΕΡΟ ΣΟΥ';
+  overlay.style.display = 'flex';
+}
+
+function draw() {
+  foodAnim = (foodAnim + 1) % 30;
+
+  // Background
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Grid dots
+  ctx.fillStyle = PHOSPHOR_FAINT;
+  for (let x = 0; x < GRID; x++) {
+    for (let y = 0; y < GRID; y++) {
+      ctx.fillRect(x*CELL + CELL/2 - 1, y*CELL + CELL/2 - 1, 2, 2);
+    }
+  }
+
+  // Snake
+  snake.forEach((seg, i) => {
+    const alpha = 1 - (i / snake.length) * 0.5;
+    const isHead = i === 0;
+    const px = seg.x * CELL;
+    const py = seg.y * CELL;
+    const pad = isHead ? 1 : 3;
+
+    // Glow
+    if (isHead) {
+      ctx.save();
+      ctx.shadowColor = PHOSPHOR;
+      ctx.shadowBlur = 12;
+    }
+
+    ctx.fillStyle = isHead ? PHOSPHOR : `rgba(0,${Math.round(170*alpha + 60*(1-alpha))},${Math.round(42*alpha)},${alpha})`;
+    ctx.fillRect(px + pad, py + pad, CELL - pad*2, CELL - pad*2);
+
+    if (isHead) {
+      // Eyes
+      ctx.fillStyle = BG;
+      const ex = dir.x === -1 ? 3 : dir.x === 1 ? 11 : 5;
+      const ey = dir.y === -1 ? 3 : dir.y === 1 ? 11 : 5;
+      ctx.fillRect(px + ex, py + ey, 3, 3);
+      ctx.fillRect(px + ex + (dir.y !== 0 ? 6 : 0), py + ey + (dir.x !== 0 ? 6 : 0), 3, 3);
+      ctx.restore();
+    }
+  });
+
+  // Food — pulsing
+  const pulse = Math.sin(foodAnim * Math.PI / 15) * 3;
+  const fp = food.x * CELL;
+  const fpy = food.y * CELL;
+  const fSize = 6 + pulse;
+  const fOff = (CELL - fSize) / 2;
+
+  ctx.save();
+  ctx.shadowColor = PHOSPHOR;
+  ctx.shadowBlur = 15 + pulse * 2;
+  ctx.fillStyle = PHOSPHOR;
+  ctx.fillRect(fp + fOff, fpy + fOff, fSize, fSize);
+
+  // Cross marker
+  ctx.fillStyle = BG;
+  ctx.fillRect(fp + fOff + fSize/2 - 1, fpy + fOff - 2, 2, fSize + 4);
+  ctx.fillRect(fp + fOff - 2, fpy + fOff + fSize/2 - 1, fSize + 4, 2);
+  ctx.restore();
+}
+
+// Controls
+document.addEventListener('keydown', e => {
+  if (!running && (e.key === 'Enter' || e.key === ' ')) { start(); return; }
+  if (!running) return;
+  const map = {
+    'ArrowUp':    {x:0,y:-1}, 'w':{x:0,y:-1}, 'W':{x:0,y:-1},
+    'ArrowDown':  {x:0,y:1},  's':{x:0,y:1},  'S':{x:0,y:1},
+    'ArrowLeft':  {x:-1,y:0}, 'a':{x:-1,y:0}, 'A':{x:-1,y:0},
+    'ArrowRight': {x:1,y:0},  'd':{x:1,y:0},  'D':{x:1,y:0},
+  };
+  const nd = map[e.key];
+  if (nd && !(nd.x === -dir.x && nd.y === -dir.y)) {
+    nextDir = nd;
+    e.preventDefault();
+  }
+});
+
+// D-pad buttons
+function setDir(dx, dy) {
+  if (!running) { start(); return; }
+  if (!(dx === -dir.x && dy === -dir.y)) nextDir = {x:dx, y:dy};
+}
+document.getElementById('btn-up').addEventListener('click',    () => setDir(0,-1));
+document.getElementById('btn-down').addEventListener('click',  () => setDir(0,1));
+document.getElementById('btn-left').addEventListener('click',  () => setDir(-1,0));
+document.getElementById('btn-right').addEventListener('click', () => setDir(1,0));
+
+// Tap overlay
+overlay.addEventListener('click', start);
+
+// Swipe support
+let touchStart = null;
+canvas.addEventListener('touchstart', e => {
+  touchStart = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+  e.preventDefault();
+}, {passive: false});
+canvas.addEventListener('touchend', e => {
+  if (!touchStart || !running) return;
+  const dx = e.changedTouches[0].clientX - touchStart.x;
+  const dy = e.changedTouches[0].clientY - touchStart.y;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    setDir(dx > 0 ? 1 : -1, 0);
+  } else {
+    setDir(0, dy > 0 ? 1 : -1);
+  }
+  e.preventDefault();
+}, {passive: false});
+
+// Initial draw
+init();
+draw();
+</script>
+</body>
+</html>
